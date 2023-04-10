@@ -42,19 +42,14 @@ class ARPlaneAnchor extends ARAnchor {
     required Matrix4 transformation,
     String? name,
     List<String>? childNodes,
-    String? cloudanchorid,
     int? ttl,
   })  : childNodes = childNodes ?? [],
-        cloudanchorid = cloudanchorid ?? null,
         ttl = ttl ?? 1,
         super(
             type: AnchorType.plane, transformation: transformation, name: name);
 
   /// Names of ARNodes attached to this [APlaneRAnchor]
   List<String> childNodes;
-
-  /// ID associated with the anchor after uploading it to the google cloud anchor API
-  String? cloudanchorid;
 
   /// Time to live of the anchor: Determines how long the anchor is stored once it is uploaded to the google cloud anchor API (optional, defaults to 1 day (24hours))
   int? ttl;
@@ -76,7 +71,6 @@ ARPlaneAnchor aRPlaneAnchorFromJson(Map<String, dynamic> json) {
         ?.map((child) => child.toString())
         ?.toList()
         ?.cast<String>(),
-    cloudanchorid: json['cloudanchorid'] as String?,
     ttl: json['ttl'] as int?,
   );
 }
@@ -88,7 +82,6 @@ Map<String, dynamic> aRPlaneAnchorToJson(ARPlaneAnchor instance) {
     'transformation': MatrixConverter().toJson(instance.transformation),
     'name': instance.name,
     'childNodes': instance.childNodes,
-    'cloudanchorid': instance.cloudanchorid,
     'ttl': instance.ttl,
   };
 }

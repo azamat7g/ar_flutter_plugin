@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:ar_flutter_plugin/datatypes/config_planedetection.dart';
 import 'package:ar_flutter_plugin/models/ar_anchor.dart';
+import 'package:ar_flutter_plugin/models/ar_augmented_image.dart';
 import 'package:ar_flutter_plugin/models/ar_hittest_result.dart';
 import 'package:ar_flutter_plugin/utils/json_converters.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +12,8 @@ import 'package:vector_math/vector_math_64.dart';
 
 // Type definitions to enforce a consistent use of the API
 typedef ARHitResultHandler = void Function(List<ARHitTestResult> hits);
+
+typedef ARAugmentedImageTrackingHandler = void Function(ARAugmentedImage);
 
 /// Manages the session configuration, parameters and events of an [ARView]
 class ARSessionManager {
@@ -29,8 +32,9 @@ class ARSessionManager {
   /// Receives hit results from user taps with tracked planes or feature points
   late ARHitResultHandler onPlaneOrPointTap;
 
-  ARSessionManager(int id, this.buildContext, this.planeDetectionConfig,
-      {this.debug = false}) {
+  late ARAugmentedImageTrackingHandler onTrackingImage;
+
+  ARSessionManager(int id, this.buildContext, this.planeDetectionConfig, {this.debug = false}) {
     _channel = MethodChannel('arsession_$id');
     _channel.setMethodCallHandler(_platformCallHandler);
     if (debug) {
@@ -38,11 +42,17 @@ class ARSessionManager {
     }
   }
 
+  Future<void> loadAugmentedImagesDatabase({required Uint8List? bytes}) {
+    assert(bytes != null);
+    return _channel.invokeMethod('load_augmented_images_database', {
+      'bytes': bytes,
+    });
+  }
+
   /// Returns the camera pose in Matrix4 format with respect to the world coordinate system of the [ARView]
   Future<Matrix4?> getCameraPose() async {
     try {
-      final serializedCameraPose =
-          await _channel.invokeMethod<List<dynamic>>('getCameraPose', {});
+      final serializedCameraPose = await _channel.invokeMethod<List<dynamic>>('getCameraPose', {});
       return MatrixConverter().fromJson(serializedCameraPose!);
     } catch (e) {
       print('Error caught: ' + e.toString());
@@ -56,8 +66,7 @@ class ARSessionManager {
       if (anchor.name.isEmpty) {
         throw Exception("Anchor can not be resolved. Anchor name is empty.");
       }
-      final serializedCameraPose =
-          await _channel.invokeMethod<List<dynamic>>('getAnchorPose', {
+      final serializedCameraPose = await _channel.invokeMethod<List<dynamic>>('getAnchorPose', {
         "anchorId": anchor.name,
       });
       return MatrixConverter().fromJson(serializedCameraPose!);
@@ -68,8 +77,7 @@ class ARSessionManager {
   }
 
   /// Returns the distance in meters between @anchor1 and @anchor2.
-  Future<double?> getDistanceBetweenAnchors(
-      ARAnchor anchor1, ARAnchor anchor2) async {
+  Future<double?> getDistanceBetweenAnchors(ARAnchor anchor1, ARAnchor anchor2) async {
     var anchor1Pose = await getPose(anchor1);
     var anchor2Pose = await getPose(anchor2);
     var anchor1Translation = anchor1Pose?.getTranslation();
@@ -118,14 +126,17 @@ class ARSessionManager {
         case 'onPlaneOrPointTap':
           if (onPlaneOrPointTap != null) {
             final rawHitTestResults = call.arguments as List<dynamic>;
-            final serializedHitTestResults = rawHitTestResults
-                .map(
-                    (hitTestResult) => Map<String, dynamic>.from(hitTestResult))
-                .toList();
+            final serializedHitTestResults = rawHitTestResults.map((hitTestResult) => Map<String, dynamic>.from(hitTestResult)).toList();
             final hitTestResults = serializedHitTestResults.map((e) {
               return ARHitTestResult.fromJson(e);
             }).toList();
             onPlaneOrPointTap(hitTestResults);
+          }
+          break;
+        case 'onTrackingImage':
+          if (onTrackingImage != null) {
+            final arAugmentedImage = ARAugmentedImage.fromMap(call.arguments);
+            onTrackingImage(arAugmentedImage);
           }
           break;
         case 'dispose':
@@ -170,12 +181,8 @@ class ARSessionManager {
 
   /// Displays the [errorMessage] in a snackbar of the parent widget
   onError(String errorMessage) {
-    ScaffoldMessenger.of(buildContext).showSnackBar(SnackBar(
-        content: Text(errorMessage),
-        action: SnackBarAction(
-            label: 'HIDE',
-            onPressed:
-                ScaffoldMessenger.of(buildContext).hideCurrentSnackBar)));
+    ScaffoldMessenger.of(buildContext)
+        .showSnackBar(SnackBar(content: Text(errorMessage), action: SnackBarAction(label: 'HIDE', onPressed: ScaffoldMessenger.of(buildContext).hideCurrentSnackBar)));
   }
 
   /// Dispose the AR view on the platforms to pause the scenes and disconnect the platform handlers.
